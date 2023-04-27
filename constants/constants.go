@@ -1,7 +1,8 @@
 package constants
 
-const TrustVerificationHeader = "x-trust-verification"
-const ClientPublicKeyHeader = "x-client-public-key"
-const ServerPublicKeyHeader = "x-server-public-key"
-const MacHeader = "x-MAC"
-const FunctionNameHeader = "x-function-name"
+const (
+	TrustVerificationHeader = "x-trust-verification"
+	ClientPublicKeyHeader   = "x-client-public-key"
+	ServerPublicKeyHeader   = "x-trufaas-public-key"
+	MacHeader               = "x-mac"
+)
