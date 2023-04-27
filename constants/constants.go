@@ -1,8 +1,8 @@
 package constants
 
 const (
-	TrustVerificationHeader = "x-trust-verification"
-	ClientPublicKeyHeader   = "x-client-public-key"
+	ClientPublicKeyHeader   = "x-invoker-public-key"
+	TrustVerificationHeader = "x-trufaas-trust-verification"
 	ServerPublicKeyHeader   = "x-trufaas-public-key"
-	MacHeader               = "x-mac"
+	MacHeader               = "x-trufaas-mac"
 )
