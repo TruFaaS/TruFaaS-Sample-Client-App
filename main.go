@@ -8,7 +8,6 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -116,8 +115,6 @@ func main() {
 	macTag := resp.Header.Get(constants.MacHeader)
 	// Get the trust verification result
 	trustVerificationTag := resp.Header.Get(constants.TrustVerificationHeader)
-	// Get the function name
-	functionName := resp.Header.Get(constants.FunctionNameHeader)
 
 	//for key, values := range resp.Header {
 	//	for _, value := range values {
@@ -125,7 +122,7 @@ func main() {
 	//	}
 	//}
 
-	if !verifyMacTag(serverPublicKeyHex, clientPrivKey, trustVerificationTag, functionName, macTag) {
+	if !verifyMacTag(serverPublicKeyHex, clientPrivKey, trustVerificationTag, macTag) {
 		fmt.Println("MAC tag verification failed")
 		return
 	}
@@ -134,7 +131,7 @@ func main() {
 	fmt.Println("Function invocation results are: ", body)
 }
 
-func verifyMacTag(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, functionName string, macTag string) bool {
+func verifyMacTag(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, macTag string) bool {
 	// Compute the shared secret using the client's private key and the server's public key
 	serverPubKeyBytes, _ := hex.DecodeString(serverPubKeyHex)
 	fmt.Println(serverPubKeyBytes)
@@ -147,10 +144,9 @@ func verifyMacTag(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, tr
 	fmt.Println(sharedSecret.Bytes())
 
 	// Compute the MAC tag using the secret key and the header
-	// TODO: add function name if it will be used
-	h := hmac.New(sha256.New, sharedSecret.Bytes())
-	h.Write([]byte(trustVerificationHeader))
-	expectedMacTag := base64.StdEncoding.EncodeToString(h.Sum(nil))
+	hMac := hmac.New(sha256.New, sharedSecret.Bytes())
+	hMac.Write([]byte(trustVerificationHeader))
+	expectedMacTag := hex.EncodeToString(hMac.Sum(nil))
 
 	// Compare the computed MAC tag with the received MAC tag
 	return macTag == expectedMacTag
