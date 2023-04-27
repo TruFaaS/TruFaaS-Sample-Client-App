@@ -2,7 +2,6 @@ package main
 
 import (
 	"TruFaaSClientApp/constants"
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/hmac"
@@ -20,63 +19,64 @@ func main() {
 	url := os.Args[1]
 	fmt.Println("Invoking function at URL ", url)
 
-	var jsonData = []byte(`{
-    "function_information": {
-        "function_name": "gs",
-        "function_namespace": "default",
-        "function_spec": {
-            "environment": {
-                "namespace": "default",
-                "name": "nodejs"
-            },
-            "package_ref": {
-                "namespace": "default",
-                "name": "hello-js-73844e1f-92fc-4132-9d30-bbfdf57c17cb",
-                "resource_version": "110732"
-            },
-            "invoke_strategy": {
-                "execution_strategy": {
-                    "executor-type": "poolmgr",
-                    "min_scale": 0,
-                    "max_scale": 10,
-                    "target_cpu_percent": 0,
-                    "specialization_timeout": 120
-                },
-                "strategy_type": "execution"
-            },
-            "function_timeout": 70,
-            "idle_timeout": 120,
-            "concurrency": 500,
-            "requests_per_pod": 1
-        }
-    },
-    "package_information": {
-        "package_name": "hello-js-73844e1f-92fc-4132-9d30-bbfdf57c17cb",
-        "package_namespace": "default",
-        "package_spec": {
-            "environment": {
-                "namespace": "default",
-                "name": "nodejs"
-            },
-            "source": {
-                "checksum": {
-                    "type": "",
-                    "sum": ""
-                }
-            },
-            "deployment": {
-                "type": "literal",
-                "literal": "Cm1vZHVsZS5leHBvcnRzID0gYXN5bmMgZnVuY3Rpb24oY29udGV4dCkgewogICAgcmV0dXJuIHsKICAgICAgICBzdGF0dXM6IDIwMCwKICAgICAgICBib2R5OiAiaGVsbG8sIHdvcmxkIVxuIgogICAgfTsKfQo=",
-                "checksum": {
-                    "type": "",
-                    "sum": ""
-                }
-            }
-        }
-    }
-}`)
+	//	var jsonData = []byte(`{
+	//    "function_information": {
+	//        "function_name": "gs",
+	//        "function_namespace": "default",
+	//        "function_spec": {
+	//            "environment": {
+	//                "namespace": "default",
+	//                "name": "nodejs"
+	//            },
+	//            "package_ref": {
+	//                "namespace": "default",
+	//                "name": "hello-js-73844e1f-92fc-4132-9d30-bbfdf57c17cb",
+	//                "resource_version": "110732"
+	//            },
+	//            "invoke_strategy": {
+	//                "execution_strategy": {
+	//                    "executor-type": "poolmgr",
+	//                    "min_scale": 0,
+	//                    "max_scale": 10,
+	//                    "target_cpu_percent": 0,
+	//                    "specialization_timeout": 120
+	//                },
+	//                "strategy_type": "execution"
+	//            },
+	//            "function_timeout": 70,
+	//            "idle_timeout": 120,
+	//            "concurrency": 500,
+	//            "requests_per_pod": 1
+	//        }
+	//    },
+	//    "package_information": {
+	//        "package_name": "hello-js-73844e1f-92fc-4132-9d30-bbfdf57c17cb",
+	//        "package_namespace": "default",
+	//        "package_spec": {
+	//            "environment": {
+	//                "namespace": "default",
+	//                "name": "nodejs"
+	//            },
+	//            "source": {
+	//                "checksum": {
+	//                    "type": "",
+	//                    "sum": ""
+	//                }
+	//            },
+	//            "deployment": {
+	//                "type": "literal",
+	//                "literal": "Cm1vZHVsZS5leHBvcnRzID0gYXN5bmMgZnVuY3Rpb24oY29udGV4dCkgewogICAgcmV0dXJuIHsKICAgICAgICBzdGF0dXM6IDIwMCwKICAgICAgICBib2R5OiAiaGVsbG8sIHdvcmxkIVxuIgogICAgfTsKfQo=",
+	//                "checksum": {
+	//                    "type": "",
+	//                    "sum": ""
+	//                }
+	//            }
+	//        }
+	//    }
+	//}`)
 
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(jsonData))
+	//req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		fmt.Println(err)
 		return
