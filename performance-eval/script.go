@@ -4,12 +4,14 @@ import (
 	"TruFaaSClientApp/constants"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
+	cryptoRand "crypto/rand"
 	"encoding/csv"
 	"encoding/hex"
 	"fmt"
 	"github.com/joho/godotenv"
 	"log"
+	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -26,28 +28,52 @@ func main() {
 	}
 
 	// Access the variables from the .env file
-	fnEnv := os.Getenv("FN_ENV")
-	fnName := os.Getenv("FN_NAME")
-	fnFile := os.Getenv("FN_FILE")
-	fnFileType := os.Getenv("FN_FILE_TYPE")
 	noOfRuns := os.Getenv("NO_OF_RUNS")
+	noOfFunctions := os.Getenv("NO_OF_FUNCTIONS")
+	treeResetURL := os.Getenv("TREE_RESET_URL")
+	testedFnName := os.Getenv("FN_NAME")
 
 	n, _ := strconv.Atoi(noOfRuns)
-	for i := 0; i < n; i++ {
-		// loop body
-		deploymentTime := deployFunction(fnName, fnEnv, fnFile, fnFileType)
-		invocationTime := invokeFunction(fnName)
-		deleteFunction(fnName)
+	f, _ := strconv.Atoi(noOfFunctions)
 
-		writeToCSV(fnFile, deploymentTime, invocationTime)
-		fmt.Println(deploymentTime, invocationTime)
+	for i := 0; i < n; i++ {
+
+		fmt.Println("<<<<<<<<<<<<<<<< Run ", i+1, " >>>>>>>>>>>>>>>>>>>")
+		//create 'f-1' number of functions first
+		createdFnNames := deployInitFunctions(f)
+
+		//deploy 'f'th function
+		deploymentTime := deployFunction(testedFnName)
+
+		//deploy 'f'th function
+		invocationTime := invokeFunction(testedFnName)
+
+		writeToCSV(f, i+1, deploymentTime, invocationTime)
+		cleanUp(testedFnName, createdFnNames, treeResetURL)
+
 	}
 
 }
+func deployInitFunctions(f int) []string {
+	var fnNames []string
 
-func deployFunction(fnName string, fnEnv string, fnFile string, fnFileType string) int64 {
+	for j := 0; j < f-1; j++ {
+		fnName := generateRandomString(5)
+		cmd := exec.Command("fission", "fn", "create", "--name", fnName, "--env", "nodejs", "--code", "./functions/hello.js")
+		cmd.Dir = "."
+		err := cmd.Run()
+		if err != nil {
+			panic(err)
+		}
+		fnNames = append(fnNames, fnName)
+	}
+	fmt.Println(f-1, "dummy functions created")
+	return fnNames
+}
+
+func deployFunction(fnName string) int64 {
 	// Command 1: fission fn create --name test --env nodejs --code hello.js
-	cmd1 := exec.Command("fission", "fn", "create", "--name", fnName, "--env", fnEnv, fnFileType, fnFile)
+	cmd1 := exec.Command("fission", "fn", "create", "--name", fnName, "--env", "nodejs", "--code", "./functions/hello.js")
 	cmd1.Dir = "."
 	cmd1.Stdout = os.Stdout
 	cmd1.Stderr = os.Stderr
@@ -57,8 +83,7 @@ func deployFunction(fnName string, fnEnv string, fnFile string, fnFileType strin
 	if err1 != nil {
 		panic(err1)
 	}
-
-	// Command 2: fission route create --name test --function test --url test
+	//Command 2: fission route create --name test --function test --url test
 	cmd2 := exec.Command("fission", "route", "create", "--name", fnName, "--function", fnName, "--url", fnName)
 	cmd2.Dir = "."
 	cmd2.Stdout = os.Stdout
@@ -68,12 +93,12 @@ func deployFunction(fnName string, fnEnv string, fnFile string, fnFileType strin
 		panic(err2)
 	}
 
-	return elapsed.Microseconds()
+	fmt.Println("function to test created.")
+	return elapsed.Milliseconds()
 }
 
 func invokeFunction(fnName string) int64 {
-
-	clientPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	clientPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), cryptoRand.Reader)
 	clientPubKey := clientPrivKey.PublicKey
 	clientPubKeyBytes := append(clientPubKey.X.Bytes(), clientPubKey.Y.Bytes()...)
 	clientPubKeyHex := hex.EncodeToString(clientPubKeyBytes)
@@ -81,48 +106,89 @@ func invokeFunction(fnName string) int64 {
 	// Command: curl http://localhost:31314/test
 	start := time.Now() // Record the start time
 	cmd := exec.Command("curl", "-H", constants.ClientPublicKeyHeader+":"+clientPubKeyHex, "http://localhost:31314/"+fnName)
-	elapsed := time.Since(start)
 	output, err := cmd.Output()
+	elapsed := time.Since(start)
 	if err != nil {
 		fmt.Println("error invoking:", err)
 	}
 	fmt.Println("function invoked. result:", string(output))
-	return elapsed.Microseconds()
+	return elapsed.Milliseconds()
 }
 
-func deleteFunction(fnName string) {
+func cleanUp(testedFnName string, createdFnNames []string, treeResetURL string) {
+
+	//Delete all functions,routes and pkgs
+
 	// Command 1: fission fn delete --name test
-	cmd1 := exec.Command("fission", "fn", "delete", "--name", fnName)
+	cmd1 := exec.Command("fission", "fn", "delete", "--name", testedFnName)
 	cmd1.Dir = "."
-	cmd1.Stdout = os.Stdout
-	cmd1.Stderr = os.Stderr
 	err1 := cmd1.Run()
 	if err1 != nil {
 		panic(err1)
 	}
 
-	// Command 2: fission route delete --name test
-	cmd2 := exec.Command("fission", "route", "delete", "--name", fnName)
+	//Command 2: fission route delete --name test
+	cmd2 := exec.Command("fission", "route", "delete", "--name", testedFnName)
 	cmd2.Dir = "."
-	cmd2.Stdout = os.Stdout
-	cmd2.Stderr = os.Stderr
 	err2 := cmd2.Run()
 	if err2 != nil {
 		panic(err2)
 	}
 
-	// Command 2: fission pkg delete --orphan=true
+	for _, value := range createdFnNames {
+		// Command: fission fn delete --name value
+		cmd := exec.Command("fission", "fn", "delete", "--name", value)
+		cmd.Dir = "."
+		err := cmd.Run()
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	// Command 3: fission pkg delete --orphan=true
 	cmd3 := exec.Command("fission", "pkg", "delete", "--orphan=true")
 	cmd3.Dir = "."
-	cmd3.Stdout = os.Stdout
-	cmd3.Stderr = os.Stderr
 	err3 := cmd3.Run()
 	if err3 != nil {
-		panic(err2)
+		panic(err3)
 	}
+
+	fmt.Println("Deleted all functions,routes and pkgs")
+
+	// Clean the External Comp
+	req, err := http.NewRequest("GET", treeResetURL, nil)
+	if err != nil {
+		panic(err)
+	}
+	_, err = http.DefaultClient.Do(req)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("API cleaned")
+
 }
 
-func writeToCSV(fnFile string, depTime int64, invocTime int64) {
+func generateRandomString(length int) string {
+	// Define the character set to use for the random string
+	const charset = "abcdefghijklmnopqrstuvwxyz"
+
+	// Seed the random number generator with the current time
+	rand.Seed(time.Now().UnixNano())
+
+	// Create a byte slice of the specified length
+	randomBytes := make([]byte, length)
+
+	// Fill the byte slice with random characters from the charset
+	for i := 0; i < length; i++ {
+		randomBytes[i] = charset[rand.Intn(len(charset))]
+	}
+
+	// Return the random string
+	return string(randomBytes)
+}
+
+func writeToCSV(noOfFunctions int, runNumber int, depTime int64, invocTime int64) {
 	// Check if the file "test-results.csv" exists.
 	_, err := os.Stat("test-results.csv")
 	var file *os.File
@@ -138,7 +204,7 @@ func writeToCSV(fnFile string, depTime int64, invocTime int64) {
 		writer = csv.NewWriter(file)
 
 		// Write the headers to the file.
-		headers := []string{"fileName", "deploymentTime", "invocationTime"}
+		headers := []string{"functionCount", "Run Number", "deploymentTime", "invocationTime"}
 		err = writer.Write(headers)
 		if err != nil {
 			panic(err)
@@ -157,12 +223,12 @@ func writeToCSV(fnFile string, depTime int64, invocTime int64) {
 	defer file.Close()
 
 	// Write the data to the file.
-	data := []string{fnFile, strconv.FormatInt(depTime, 10), strconv.FormatInt(invocTime, 10)}
+	data := []string{strconv.Itoa(noOfFunctions), strconv.Itoa(runNumber), strconv.FormatInt(depTime, 10), strconv.FormatInt(invocTime, 10)}
 	err = writer.Write(data)
 	if err != nil {
 		panic(err)
 	}
-
+	fmt.Println("results written to csv file")
 	// Flush the data to the file.
 	writer.Flush()
 }
