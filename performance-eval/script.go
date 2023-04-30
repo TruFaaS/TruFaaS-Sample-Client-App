@@ -94,7 +94,7 @@ func deployFunction(fnName string) int64 {
 	}
 
 	fmt.Println("function to test created.")
-	return elapsed.Microseconds()
+	return elapsed.Milliseconds()
 }
 
 func invokeFunction(fnName string) int64 {
@@ -106,13 +106,13 @@ func invokeFunction(fnName string) int64 {
 	// Command: curl http://localhost:31314/test
 	start := time.Now() // Record the start time
 	cmd := exec.Command("curl", "-H", constants.ClientPublicKeyHeader+":"+clientPubKeyHex, "http://localhost:31314/"+fnName)
-	elapsed := time.Since(start)
 	output, err := cmd.Output()
+	elapsed := time.Since(start)
 	if err != nil {
 		fmt.Println("error invoking:", err)
 	}
 	fmt.Println("function invoked. result:", string(output))
-	return elapsed.Microseconds()
+	return elapsed.Milliseconds()
 }
 
 func cleanUp(testedFnName string, createdFnNames []string, treeResetURL string) {
