@@ -17,7 +17,7 @@ and the TruFaaS external component.
 2. Run the command ```go run fn_create.go {functionName} {functionSourceCode}```. 
    - Replace ```{functionName}``` with what you would like your function to be named.
    - Replace ```{functionSourceCode}``` with the file path of your function source code. A sample function ```sample_fn.js``` has been provided here.
-   - For example, ```go run fn_invoke.go sample_function sample_fn.js``` creates a function named sample_function from the ```sample_fn.js``` file in the client app base folder.
+   - For example, ```go run fn_create.go sample_function sample_fn.js``` creates a function named sample_function from the ```sample_fn.js``` file in the client app base folder.
 3. If the function was created successfully, you should get the response
     ```bash
       [TruFaaS] Function Trust Value Generated.
