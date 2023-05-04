@@ -17,7 +17,7 @@ func main() {
 	}
 
 	// Command 1: fission fn create --name test --env nodejs --code sample_fn.js
-	cmd1 := exec.Command("fission", "fn", "create", "--name", fnName, "--env", "nodejs", "--code", fileName)
+	cmd1 := exec.Command("fission", "fn", "create", "--name", fnName, "--env", "nodejs", "--code", fileName, "--idletimeout=5")
 	cmd1.Dir = "."
 	cmd1.Stdout = os.Stdout
 	cmd1.Stderr = os.Stderr
