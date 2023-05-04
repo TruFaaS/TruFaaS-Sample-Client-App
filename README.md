@@ -9,6 +9,8 @@ and the TruFaaS external component.
 1. Build and deploy the TruFaaS external component on your local machine on port 8080.
 2. Build and deploy the TruFaaS version of Fission.
 3. Run the command ```kubectl port-forward svc/router 31314:80 -n fission``` on a terminal. Make sure that it continues to run while you use this application.
+4. Create the Fission environment relevant to the programming language of the function.
+   - For JS (which is used in the sample application), run ```fission env create --name nodejs --image fission/node-env``` in the terminal.
 
 ### Function Creation
 1. Open a terminal inside the source folder.
@@ -22,8 +24,7 @@ and the TruFaaS external component.
       function 'sample_function' created
       trigger 'sample_function' created
     ```
-4. Create the Fission environment relevant to the programming language of the function.
-   - For JS (which is used in the sample application), run ```fission env create --name nodejs --image fission/node-env``` in the terminal.
+
 ### Function Invocation
 1. First, create a function. Refer to the function creation section.
 2. Open a terminal inside the source folder.
