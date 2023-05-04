@@ -23,7 +23,7 @@ and the TruFaaS external component.
       trigger 'sample_function' created
     ```
 4. Create the Fission environment relevant to the programming language of the function.
-   - For JS (which is used in the sample application), run ```fission env create --name nodejs --image fission/node-env```
+   - For JS (which is used in the sample application), run ```fission env create --name nodejs --image fission/node-env``` in the terminal.
 ### Function Invocation
 1. First, create a function. Refer to the function creation section.
 2. Open a terminal inside the source folder.
