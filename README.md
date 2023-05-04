@@ -14,7 +14,7 @@ and the TruFaaS external component.
 
 ### Function Creation
 1. Open a terminal inside the source folder.
-2. Run the command ```go run fn_invoke.go {functionName} {functionSourceCode}```. 
+2. Run the command ```go run fn_create.go {functionName} {functionSourceCode}```. 
    - Replace ```{functionName}``` with what you would like your function to be named.
    - Replace ```{functionSourceCode}``` with the file path of your function source code. A sample function ```sample_fn.js``` has been provided here.
    - For example, ```go run fn_invoke.go sample_function sample_fn.js``` creates a function named sample_function from the ```sample_fn.js``` file in the client app base folder.
