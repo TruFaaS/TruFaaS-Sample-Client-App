@@ -1,9 +1,18 @@
 package main
 
 import (
+	"TruFaaSClientApp/constants"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,13 +20,14 @@ import (
 
 func main() {
 	http.HandleFunc("/upload", uploadFileHandler)
-	http.HandleFunc("/file", getFileHandler)
+	http.HandleFunc("/file", clientVerifyFunction)
 
-	fmt.Println("Server listening on port 8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	fmt.Println("Server listening on port 8000...")
+	log.Fatal(http.ListenAndServe(":8000", nil))
 }
 
 func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -40,6 +50,11 @@ func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
 			"fn_name": fnName,
 			"result":  "Trust Created Successfully",
 		}
+	} else {
+		data = map[string]interface{}{
+			"result": "Error in creating function",
+		}
+
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -53,26 +68,79 @@ func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Write the JSON response
 	w.Write(jsonData)
-
 }
 
-func getFileHandler(w http.ResponseWriter, r *http.Request) {
+func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	fnName := r.FormValue("fn_name")
 
-	// Get the file from storage or generate it dynamically
-	fileData := []byte("This is the file content")
+	url := "http://localhost:31314/" + fnName
+	// Generate ECDSA private key
+	clientPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename=file.txt")
+	// Get the public key from the private key
+	clientPubKey := clientPrivKey.PublicKey
 
-	_, err := w.Write(fileData)
+	// Convert the client public key to hex
+	clientPubKeyBytes := append(clientPubKey.X.Bytes(), clientPubKey.Y.Bytes()...)
+	clientPubKeyHex := hex.EncodeToString(clientPubKeyBytes)
+
+	// Invoking the function at given URL
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		http.Error(w, "Failed to send file", http.StatusInternalServerError)
+		fmt.Println(err)
 		return
 	}
+	req.Header.Set(constants.ClientPublicKeyHeader, clientPubKeyHex)
+
+	// Sending the request to Fission
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		fmt.Println("Failed to send request, error: ", err)
+		return
+	}
+
+	defer resp.Body.Close()
+
+	// Reading the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Failed to read the response body, error: ", err)
+		return
+	}
+
+	// Accessing the headers
+	// Get the server's public key
+	serverPublicKeyHex := resp.Header.Get(constants.ServerPublicKeyHeader)
+	// Get the MAC tag
+	macTag := resp.Header.Get(constants.MacHeader)
+	// Get the trust verification result
+	trustVerificationTag := resp.Header.Get(constants.TrustVerificationHeader)
+
+	if resp.StatusCode == http.StatusNotFound {
+		fmt.Println("The function you are trying to invoke does not exist.")
+		return
+	}
+
+	if serverPublicKeyHex == "" {
+		fmt.Println(resp.Status)
+		fmt.Println("Did not receive TruFaaS headers.")
+		return
+	}
+
+	if !verifyMacTag(serverPublicKeyHex, clientPrivKey, trustVerificationTag, macTag) {
+		fmt.Println("MAC tag verification failed")
+		return
+	}
+
+	fmt.Println("MAC tag verification succeeded")
+	fmt.Println("[TruFaaS] Trust verification value received: ", trustVerificationTag)
+	fmt.Println("Function invocation result: ", string(body))
 }
 
 func fnCreate(fnName string, fileName string) bool {
@@ -110,7 +178,51 @@ func fnCreate(fnName string, fileName string) bool {
 	if err2 != nil {
 		print("Error in calling command")
 		return false
+	}
+	return true
+}
 
+func verifyMacTag(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, macTag string) bool {
+	// Compute the shared secret using the client's private key and the server's public key
+
+	serverPubKeyBytes, _ := hex.DecodeString(serverPubKeyHex)
+	serverPubKey := &ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     new(big.Int).SetBytes(serverPubKeyBytes[:32]),
+		Y:     new(big.Int).SetBytes(serverPubKeyBytes[32:]),
+	}
+	sharedSecret, _ := serverPubKey.Curve.ScalarMult(serverPubKey.X, serverPubKey.Y, clientPrivateKey.D.Bytes())
+
+	// Compute the MAC tag using the secret key and the header
+	hMac := hmac.New(sha256.New, sharedSecret.Bytes())
+	hMac.Write([]byte(trustVerificationHeader))
+	expectedMacTag := hex.EncodeToString(hMac.Sum(nil))
+
+	// Compare the computed MAC tag with the received MAC tag
+	return macTag == expectedMacTag
+}
+func cleanUp(fnName string) bool {
+
+	// Command 1: fission fn create --name test --env nodejs --code sample_fn.js
+	cmd1 := exec.Command("fission", "fn", "delete", "--name", fnName)
+	cmd1.Dir = "."
+	cmd1.Stdout = os.Stdout
+	cmd1.Stderr = os.Stderr
+	err1 := cmd1.Run()
+
+	if err1 != nil {
+		print("Error deleting function")
+		return false
+	}
+	//Command 2: fission route create --name test --function test --url test
+	cmd2 := exec.Command("fission", "httptrigger", "delete", "--name", fnName)
+	cmd2.Dir = "."
+	cmd2.Stdout = os.Stdout
+	cmd2.Stderr = os.Stderr
+	err2 := cmd2.Run()
+	if err2 != nil {
+		print("Error in deleting trigger")
+		return false
 	}
 	return true
 }
@@ -132,6 +244,12 @@ func getFileAndSaveLocally(r *http.Request, w http.ResponseWriter) string {
 		return ""
 	}
 	defer localFile.Close()
+
+	_, err = io.Copy(localFile, file)
+	if err != nil {
+		http.Error(w, "Failed to write file", http.StatusInternalServerError)
+		return ""
+	}
 
 	return handler.Filename
 }

@@ -84,7 +84,7 @@ func main() {
 	fmt.Println("Function invocation result: ", string(body))
 }
 
-func verifyMacTag(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, macTag string) bool {
+func verifyMacTag1(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, macTag string) bool {
 	// Compute the shared secret using the client's private key and the server's public key
 
 	serverPubKeyBytes, _ := hex.DecodeString(serverPubKeyHex)
