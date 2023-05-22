@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,14 +20,15 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/upload", uploadFileHandler)
-	http.HandleFunc("/file", clientVerifyFunction)
+	//createEnvs()
 
+	http.HandleFunc("/upload", clientFunctionDeployment)
+	http.HandleFunc("/file", clientVerifyFunction)
 	fmt.Println("Server listening on port 8000...")
 	log.Fatal(http.ListenAndServe(":8000", nil))
 }
 
-func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
+func clientFunctionDeployment(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -42,19 +44,20 @@ func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
 	fileName := getFileAndSaveLocally(r, w)
 
 	fnName := r.FormValue("fn_name")
-	result := fnCreate(fnName, fileName)
+	env := r.FormValue("env")
+	err = fnCreate(fnName, fileName, env)
 
 	var data map[string]interface{}
-	if result {
+	if err == nil {
 		data = map[string]interface{}{
 			"fn_name": fnName,
-			"result":  "Trust Created Successfully",
+			"result":  "Function Created Successfully",
 		}
 	} else {
 		data = map[string]interface{}{
-			"result": "Error in creating function",
+			"fn_name": fnName,
+			"result":  err.Error(),
 		}
-
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -143,32 +146,19 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Function invocation result: ", string(body))
 }
 
-func fnCreate(fnName string, fileName string) bool {
+func fnCreate(fnName string, fileName string, env string) error {
 
 	// Command 1: fission fn create --name test --env nodejs --code sample_fn.js
-	envCmdPy := exec.Command("fission env create --name python --image fission/python-env:latest --builder fission/python-builder:latest")
-	envCmdPy.Dir = "."
-	envCmdPy.Stdout = os.Stdout
-	envCmdPy.Stderr = os.Stderr
-	_ = envCmdPy.Run()
-
-	envCmdJs := exec.Command("fission env create --name node --image fission/node-env")
-	envCmdJs.Dir = "."
-	envCmdJs.Stdout = os.Stdout
-	envCmdJs.Stderr = os.Stderr
-	_ = envCmdJs.Run()
-
-	// Command 1: fission fn create --name test --env nodejs --code sample_fn.js
-	cmd1 := exec.Command("fission", "fn", "create", "--name", fnName, "--env", "nodejs", "--code", fileName, "--idletimeout=1")
+	cmd1 := exec.Command("fission", "fn", "create", "--name", fnName, "--env", env, "--code", fileName, "--idletimeout=1")
 	cmd1.Dir = "."
 	cmd1.Stdout = os.Stdout
 	cmd1.Stderr = os.Stderr
 	err1 := cmd1.Run()
 
 	if err1 != nil {
-		print("Error creating function")
-		return false
+		return errors.New("A function with the same name already exists")
 	}
+
 	//Command 2: fission route create --name test --function test --url test
 	cmd2 := exec.Command("fission", "route", "create", "--name", fnName, "--function", fnName, "--url", fnName)
 	cmd2.Dir = "."
@@ -176,10 +166,9 @@ func fnCreate(fnName string, fileName string) bool {
 	cmd2.Stderr = os.Stderr
 	err2 := cmd2.Run()
 	if err2 != nil {
-		print("Error in calling command")
-		return false
+		return errors.New("A route with same name already exists")
 	}
-	return true
+	return nil
 }
 
 func verifyMacTag(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, macTag string) bool {
@@ -252,4 +241,23 @@ func getFileAndSaveLocally(r *http.Request, w http.ResponseWriter) string {
 	}
 
 	return handler.Filename
+}
+
+func createEnvs() {
+
+	// Command 1: fission fn create --name test --env nodejs --code sample_fn.js
+	envCmdPy := exec.Command("fission env create --name python --image fission/python-env:latest --builder fission/python-builder:latest")
+	envCmdPy.Dir = "."
+	envCmdPy.Stdout = os.Stdout
+	envCmdPy.Stderr = os.Stderr
+	err := envCmdPy.Run()
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("===========================")
+	envCmdJs := exec.Command("fission env create --name node --image fission/node-env")
+	envCmdJs.Dir = "."
+	envCmdJs.Stdout = os.Stdout
+	envCmdJs.Stderr = os.Stderr
+	_ = envCmdJs.Run()
 }
