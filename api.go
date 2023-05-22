@@ -20,7 +20,6 @@ import (
 )
 
 func main() {
-	//createEnvs()
 
 	http.HandleFunc("/upload", clientFunctionDeployment)
 	http.HandleFunc("/file", clientVerifyFunction)
@@ -144,6 +143,30 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("MAC tag verification succeeded")
 	fmt.Println("[TruFaaS] Trust verification value received: ", trustVerificationTag)
 	fmt.Println("Function invocation result: ", string(body))
+	var data map[string]interface{}
+	if err == nil {
+		data = map[string]interface{}{
+			"fn_name": fnName,
+			"results": string(body),
+		}
+	} else {
+		data = map[string]interface{}{
+			"fn_name": fnName,
+			"result":  err.Error(),
+		}
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
+		return
+	}
+
+	// Set the appropriate headers
+	w.Header().Set("Content-Type", "application/json")
+
+	// Write the JSON response
+	w.Write(jsonData)
 }
 
 func fnCreate(fnName string, fileName string, env string) error {
