@@ -81,15 +81,9 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	fnName := r.FormValue("fn_name")
 
 	url := "http://localhost:31314/" + fnName
-	// Generate ECDSA private key
-	clientPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
-	// Get the public key from the private key
-	clientPubKey := clientPrivKey.PublicKey
-
-	// Convert the client public key to hex
-	clientPubKeyBytes := append(clientPubKey.X.Bytes(), clientPubKey.Y.Bytes()...)
-	clientPubKeyHex := hex.EncodeToString(clientPubKeyBytes)
+	clientPrivKeyHex := r.Header.Get("private_key")
+	clientPubKeyHex := r.Header.Get("public_key")
 
 	// Invoking the function at given URL
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -136,7 +130,7 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !verifyMacTag(serverPublicKeyHex, clientPrivKey, trustVerificationTag, macTag) {
+	if !verifyMacTag(serverPublicKeyHex, clientPrivKeyHex, trustVerificationTag, macTag) {
 		fmt.Println("MAC tag verification failed")
 		return
 	}
@@ -198,6 +192,7 @@ func clientGenerateKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	// Set the appropriate headers
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	// Write the JSON response
 	w.Write(jsonData)
 }
@@ -227,8 +222,14 @@ func fnCreate(fnName string, fileName string, env string) error {
 	return nil
 }
 
-func verifyMacTag(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, macTag string) bool {
+func verifyMacTag(serverPubKeyHex string, clientPrivateKeyHex string, trustVerificationHeader string, macTag string) bool {
 	// Compute the shared secret using the client's private key and the server's public key
+
+	// TODO: need to check
+	clientPrivKeyBytes, _ := hex.DecodeString(clientPrivateKeyHex)
+	clientPrivateKey := new(ecdsa.PrivateKey)
+	clientPrivateKey.Curve = elliptic.P256() // Replace with the appropriate elliptic curve if needed
+	clientPrivateKey.D = new(big.Int).SetBytes(clientPrivKeyBytes)
 
 	serverPubKeyBytes, _ := hex.DecodeString(serverPubKeyHex)
 	serverPubKey := &ecdsa.PublicKey{
