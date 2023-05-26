@@ -21,13 +21,14 @@ import (
 
 func main() {
 
-	http.HandleFunc("/upload", clientFunctionDeployment)
-	http.HandleFunc("/file", clientVerifyFunction)
+	http.HandleFunc("/create", clientDeployFunction)
+	http.HandleFunc("/invoke", clientVerifyFunction)
+	http.HandleFunc("/generate", clientGenerateKeys)
 	fmt.Println("Server listening on port 8000...")
 	log.Fatal(http.ListenAndServe(":8000", nil))
 }
 
-func clientFunctionDeployment(w http.ResponseWriter, r *http.Request) {
+func clientDeployFunction(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -169,6 +170,38 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonData)
 }
 
+func clientGenerateKeys(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	clientPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	clientPrivKeyBytes := append(clientPrivKey.X.Bytes(), clientPrivKey.Y.Bytes()...)
+	clientPrivKeyHex := hex.EncodeToString(clientPrivKeyBytes)
+
+	// Get the public key from the private key
+	clientPubKey := clientPrivKey.PublicKey
+
+	// Convert the client public key to hex
+	clientPubKeyBytes := append(clientPubKey.X.Bytes(), clientPubKey.Y.Bytes()...)
+	clientPubKeyHex := hex.EncodeToString(clientPubKeyBytes)
+
+	data := map[string]interface{}{
+		"private_key": clientPrivKeyHex,
+		"public_key":  clientPubKeyHex,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
+		return
+	}
+	// Set the appropriate headers
+	w.Header().Set("Content-Type", "application/json")
+	// Write the JSON response
+	w.Write(jsonData)
+}
+
 func fnCreate(fnName string, fileName string, env string) error {
 
 	// Command 1: fission fn create --name test --env nodejs --code sample_fn.js
@@ -213,6 +246,7 @@ func verifyMacTag(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, tr
 	// Compare the computed MAC tag with the received MAC tag
 	return macTag == expectedMacTag
 }
+
 func cleanUp(fnName string) bool {
 
 	// Command 1: fission fn create --name test --env nodejs --code sample_fn.js
