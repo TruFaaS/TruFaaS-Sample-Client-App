@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rs/cors"
 	"io"
 	"log"
 	"math/big"
@@ -20,12 +21,18 @@ import (
 )
 
 func main() {
+	corsHandler := cors.Default()
 
+	// Create a new HTTP server and wrap the default handler with the CORS middleware
+	server := http.Server{
+		Addr:    ":8000",
+		Handler: corsHandler.Handler(http.DefaultServeMux),
+	}
 	http.HandleFunc("/create", clientDeployFunction)
 	http.HandleFunc("/invoke", clientVerifyFunction)
 	http.HandleFunc("/generate", clientGenerateKeys)
 	fmt.Println("Server listening on port 8000...")
-	log.Fatal(http.ListenAndServe(":8000", nil))
+	log.Fatal(server.ListenAndServe())
 }
 
 func clientDeployFunction(w http.ResponseWriter, r *http.Request) {
