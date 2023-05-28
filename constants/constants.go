@@ -5,4 +5,5 @@ const (
 	TrustVerificationHeader = "x-trufaas-trust-verification"
 	ServerPublicKeyHeader   = "x-trufaas-public-key"
 	MacHeader               = "x-trufaas-mac"
+	ContentTypeJSON         = "application/json"
 )

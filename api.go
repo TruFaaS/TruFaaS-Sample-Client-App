@@ -2,6 +2,7 @@ package main
 
 import (
 	"TruFaaSClientApp/constants"
+	"TruFaaSClientApp/utils"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/hmac"
@@ -19,6 +20,12 @@ import (
 	"os"
 	"os/exec"
 )
+
+type functionInvocationResults struct {
+	error        string
+	fnInvResults string
+	fnName       string
+}
 
 func main() {
 	corsHandler := cors.Default()
@@ -82,8 +89,13 @@ func clientDeployFunction(w http.ResponseWriter, r *http.Request) {
 }
 
 func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
+	errResponse := utils.ErrorResponse{}
+	var data map[string]interface{}
+
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		errResponse.StatusCode = http.StatusBadRequest
+		errResponse.ErrorMsg = "Incorrect HTTP Method"
+		sendErrorResponse(w, errResponse)
 		return
 	}
 	fnName := r.FormValue("fn_name")
@@ -96,9 +108,12 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	// Invoking the function at given URL
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		fmt.Println(err)
+		errResponse.StatusCode = http.StatusBadRequest
+		errResponse.ErrorMsg = err.Error()
+		sendErrorResponse(w, errResponse)
 		return
 	}
+	fmt.Println(clientPubKeyHex)
 	req.Header.Set(constants.ClientPublicKeyHeader, clientPubKeyHex)
 
 	// Sending the request to Fission
@@ -106,22 +121,36 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		fmt.Println("Failed to send request, error: ", err)
+		errResponse.StatusCode = http.StatusInternalServerError
+		errResponse.ErrorMsg = err.Error()
+		sendErrorResponse(w, errResponse)
 		return
 	}
 
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			errResponse.StatusCode = http.StatusInternalServerError
+			errResponse.ErrorMsg = err.Error()
+			sendErrorResponse(w, errResponse)
+			return
+		}
+	}(resp.Body)
 
 	// Reading the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println("Failed to read the response body, error: ", err)
+		errResponse.StatusCode = http.StatusInternalServerError
+		errResponse.ErrorMsg = err.Error()
+		sendErrorResponse(w, errResponse)
 		return
 	}
 
 	// Accessing the headers
 	// Get the server's public key
 	serverPublicKeyHex := resp.Header.Get(constants.ServerPublicKeyHeader)
+	fmt.Println("server public key", serverPublicKeyHex)
 	// Get the MAC tag
 	macTag := resp.Header.Get(constants.MacHeader)
 	// Get the trust verification result
@@ -129,39 +158,39 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 
 	if resp.StatusCode == http.StatusNotFound {
 		fmt.Println("The function you are trying to invoke does not exist.")
+		errResponse.StatusCode = http.StatusNotFound
+		errResponse.ErrorMsg = "The function you are trying to invoke does not exist."
+		sendErrorResponse(w, errResponse)
 		return
 	}
 
 	if serverPublicKeyHex == "" {
 		fmt.Println(resp.Status)
 		fmt.Println("Did not receive TruFaaS headers.")
+		errResponse.StatusCode = http.StatusInternalServerError
+		errResponse.ErrorMsg = "Did not receive TruFaaS headers."
+		sendErrorResponse(w, errResponse)
 		return
 	}
 
-	if !verifyMacTag(serverPublicKeyHex, clientPrivKeyHex, trustVerificationTag, macTag) {
-		fmt.Println("MAC tag verification failed")
-		return
+	data = map[string]interface{}{
+		"fn_name":            fnName,
+		"result":             string(body),
+		"mac_verification":   verifyMacTag(serverPublicKeyHex, clientPrivKeyHex, trustVerificationTag, macTag),
+		"trust_verification": trustVerificationTag,
+		"mac_tag":            macTag,
+		"ex_comp_public_key": serverPublicKeyHex,
 	}
 
 	fmt.Println("MAC tag verification succeeded")
 	fmt.Println("[TruFaaS] Trust verification value received: ", trustVerificationTag)
 	fmt.Println("Function invocation result: ", string(body))
-	var data map[string]interface{}
-	if err == nil {
-		data = map[string]interface{}{
-			"fn_name": fnName,
-			"results": string(body),
-		}
-	} else {
-		data = map[string]interface{}{
-			"fn_name": fnName,
-			"result":  err.Error(),
-		}
-	}
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
+		errResponse.StatusCode = http.StatusBadRequest
+		errResponse.ErrorMsg = err.Error()
+		sendErrorResponse(w, errResponse)
 		return
 	}
 
@@ -178,11 +207,12 @@ func clientGenerateKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	clientPrivKeyBytes := append(clientPrivKey.X.Bytes(), clientPrivKey.Y.Bytes()...)
+	clientPrivKeyBytes := clientPrivKey.D.Bytes()
 	clientPrivKeyHex := hex.EncodeToString(clientPrivKeyBytes)
-
+	fmt.Println(clientPrivKey)
 	// Get the public key from the private key
 	clientPubKey := clientPrivKey.PublicKey
+	fmt.Println(clientPubKey)
 
 	// Convert the client public key to hex
 	clientPubKeyBytes := append(clientPubKey.X.Bytes(), clientPubKey.Y.Bytes()...)
@@ -215,7 +245,8 @@ func fnCreate(fnName string, fileName string, env string) error {
 	err1 := cmd1.Run()
 
 	if err1 != nil {
-		return errors.New("Failed to create function.\n A function with the same name may already exists.")
+		return errors.New("Failed to create function. " + err1.Error())
+		//return errors.New(err1.Error())
 	}
 
 	//Command 2: fission route create --name test --function test --url test
@@ -225,7 +256,7 @@ func fnCreate(fnName string, fileName string, env string) error {
 	cmd2.Stderr = os.Stderr
 	err2 := cmd2.Run()
 	if err2 != nil {
-		return errors.New("Failed to create function.\n A route with same name may already exists.")
+		return errors.New("Failed to create route.\n " + err2.Error())
 	}
 	return nil
 }
@@ -238,6 +269,7 @@ func verifyMacTag(serverPubKeyHex string, clientPrivateKeyHex string, trustVerif
 	clientPrivateKey := new(ecdsa.PrivateKey)
 	clientPrivateKey.Curve = elliptic.P256() // Replace with the appropriate elliptic curve if needed
 	clientPrivateKey.D = new(big.Int).SetBytes(clientPrivKeyBytes)
+	fmt.Println(clientPrivKeyBytes)
 
 	serverPubKeyBytes, _ := hex.DecodeString(serverPubKeyHex)
 	serverPubKey := &ecdsa.PublicKey{
@@ -326,4 +358,20 @@ func createEnvs() {
 	envCmdJs.Stdout = os.Stdout
 	envCmdJs.Stderr = os.Stderr
 	_ = envCmdJs.Run()
+}
+
+func sendErrorResponse(respWriter http.ResponseWriter, body utils.ErrorResponse) {
+	fmt.Println(body)
+	jsonResponse, err := json.Marshal(body)
+	if err != nil {
+		fmt.Printf("failed to marshal body, Error:%s", err)
+		return
+	}
+	respWriter.Header().Set("Content-Type", constants.ContentTypeJSON)
+	respWriter.WriteHeader(body.StatusCode)
+	_, err = respWriter.Write(jsonResponse)
+	if err != nil {
+		fmt.Printf("failed to marshal body, Error:%s", err)
+		return
+	}
 }
