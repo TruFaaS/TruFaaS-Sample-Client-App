@@ -58,13 +58,14 @@ func clientDeployFunction(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		data = map[string]interface{}{
 			"fn_name": fnName,
-			"result":  "Function Created Successfully",
+			"result":  "TruFaaS Trust Value Created Successfully!!\n Function Created Successfully!!",
 		}
 	} else {
 		data = map[string]interface{}{
 			"fn_name": fnName,
-			"result":  err.Error(),
+			"result":  "OOPS! " + err.Error(),
 		}
+		w.WriteHeader(http.StatusInternalServerError)
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -214,7 +215,7 @@ func fnCreate(fnName string, fileName string, env string) error {
 	err1 := cmd1.Run()
 
 	if err1 != nil {
-		return errors.New("A function with the same name already exists")
+		return errors.New("Failed to create function.\n A function with the same name may already exists.")
 	}
 
 	//Command 2: fission route create --name test --function test --url test
@@ -224,7 +225,7 @@ func fnCreate(fnName string, fileName string, env string) error {
 	cmd2.Stderr = os.Stderr
 	err2 := cmd2.Run()
 	if err2 != nil {
-		return errors.New("A route with same name already exists")
+		return errors.New("Failed to create function.\n A route with same name may already exists.")
 	}
 	return nil
 }
