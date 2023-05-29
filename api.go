@@ -28,7 +28,7 @@ type functionInvocationResults struct {
 }
 
 func main() {
-	corsHandler := cors.Default()
+	corsHandler := cors.AllowAll()
 
 	// Create a new HTTP server and wrap the default handler with the CORS middleware
 	server := http.Server{
@@ -113,7 +113,6 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 		sendErrorResponse(w, errResponse)
 		return
 	}
-	fmt.Println(clientPubKeyHex)
 	req.Header.Set(constants.ClientPublicKeyHeader, clientPubKeyHex)
 
 	// Sending the request to Fission
@@ -150,7 +149,6 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	// Accessing the headers
 	// Get the server's public key
 	serverPublicKeyHex := resp.Header.Get(constants.ServerPublicKeyHeader)
-	fmt.Println("server public key", serverPublicKeyHex)
 	// Get the MAC tag
 	macTag := resp.Header.Get(constants.MacHeader)
 	// Get the trust verification result
@@ -165,7 +163,6 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if serverPublicKeyHex == "" {
-		fmt.Println(resp.Status)
 		fmt.Println("Did not receive TruFaaS headers.")
 		errResponse.StatusCode = http.StatusInternalServerError
 		errResponse.ErrorMsg = "Did not receive TruFaaS headers."
@@ -209,10 +206,9 @@ func clientGenerateKeys(w http.ResponseWriter, r *http.Request) {
 	clientPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	clientPrivKeyBytes := clientPrivKey.D.Bytes()
 	clientPrivKeyHex := hex.EncodeToString(clientPrivKeyBytes)
-	fmt.Println(clientPrivKey)
 	// Get the public key from the private key
 	clientPubKey := clientPrivKey.PublicKey
-	fmt.Println(clientPubKey)
+	fmt.Println("Generated Key Pair.")
 
 	// Convert the client public key to hex
 	clientPubKeyBytes := append(clientPubKey.X.Bytes(), clientPubKey.Y.Bytes()...)
