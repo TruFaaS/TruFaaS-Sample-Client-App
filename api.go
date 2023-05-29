@@ -36,7 +36,7 @@ func main() {
 		Handler: corsHandler.Handler(http.DefaultServeMux),
 	}
 	http.HandleFunc("/create", clientDeployFunction)
-	http.HandleFunc("/invoke", clientVerifyFunction)
+	http.HandleFunc("/invoke/{fnName}", clientVerifyFunction)
 	http.HandleFunc("/generate", clientGenerateKeys)
 	fmt.Println("Server listening on port 8000...")
 	log.Fatal(server.ListenAndServe())
@@ -91,21 +91,20 @@ func clientDeployFunction(w http.ResponseWriter, r *http.Request) {
 func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	errResponse := utils.ErrorResponse{}
 	var data map[string]interface{}
-
 	if r.Method != http.MethodGet {
 		errResponse.StatusCode = http.StatusBadRequest
 		errResponse.ErrorMsg = "Incorrect HTTP Method"
 		sendErrorResponse(w, errResponse)
 		return
 	}
-	fnName := r.FormValue("fn_name")
+
+	fnName := r.URL.Path[len("/invoke/"):]
 
 	url := "http://localhost:31314/" + fnName
 
 	clientPrivKeyHex := r.Header.Get("private_key")
 	clientPubKeyHex := r.Header.Get("public_key")
 
-	// Invoking the function at given URL
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		errResponse.StatusCode = http.StatusBadRequest
@@ -113,7 +112,10 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 		sendErrorResponse(w, errResponse)
 		return
 	}
-	req.Header.Set(constants.ClientPublicKeyHeader, clientPubKeyHex)
+
+	if clientPrivKeyHex != "" && clientPubKeyHex != "" {
+		req.Header.Set(constants.ClientPublicKeyHeader, clientPubKeyHex)
+	}
 
 	// Sending the request to Fission
 	client := &http.Client{}
@@ -146,42 +148,50 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Accessing the headers
-	// Get the server's public key
-	serverPublicKeyHex := resp.Header.Get(constants.ServerPublicKeyHeader)
-	// Get the MAC tag
-	macTag := resp.Header.Get(constants.MacHeader)
-	// Get the trust verification result
-	trustVerificationTag := resp.Header.Get(constants.TrustVerificationHeader)
+	// if trust headers are sent
+	if clientPrivKeyHex != "" && clientPubKeyHex != "" {
+		// Accessing the headers
+		// Get the server's public key
+		serverPublicKeyHex := resp.Header.Get(constants.ServerPublicKeyHeader)
+		// Get the MAC tag
+		macTag := resp.Header.Get(constants.MacHeader)
+		// Get the trust verification result
+		trustVerificationTag := resp.Header.Get(constants.TrustVerificationHeader)
 
-	if resp.StatusCode == http.StatusNotFound {
-		fmt.Println("The function you are trying to invoke does not exist.")
-		errResponse.StatusCode = http.StatusNotFound
-		errResponse.ErrorMsg = "The function you are trying to invoke does not exist."
-		sendErrorResponse(w, errResponse)
-		return
+		if resp.StatusCode == http.StatusNotFound {
+			fmt.Println("The function you are trying to invoke does not exist.")
+			errResponse.StatusCode = http.StatusNotFound
+			errResponse.ErrorMsg = "The function you are trying to invoke does not exist."
+			sendErrorResponse(w, errResponse)
+			return
+		}
+
+		if serverPublicKeyHex == "" {
+			fmt.Println("Did not receive TruFaaS headers.")
+			errResponse.StatusCode = http.StatusInternalServerError
+			errResponse.ErrorMsg = "Did not receive TruFaaS headers."
+			sendErrorResponse(w, errResponse)
+			return
+		}
+
+		data = map[string]interface{}{
+			"fn_name":            fnName,
+			"result":             string(body),
+			"mac_verification":   verifyMacTag(serverPublicKeyHex, clientPrivKeyHex, trustVerificationTag, macTag),
+			"trust_verification": trustVerificationTag,
+			"mac_tag":            macTag,
+			"ex_comp_public_key": serverPublicKeyHex,
+		}
+
+		fmt.Println("MAC tag verification succeeded")
+		fmt.Println("[TruFaaS] Trust verification value received: ", trustVerificationTag)
+		fmt.Println("Function invocation result: ", string(body))
+	} else {
+		data = map[string]interface{}{
+			"fn_name": fnName,
+			"result":  string(body),
+		}
 	}
-
-	if serverPublicKeyHex == "" {
-		fmt.Println("Did not receive TruFaaS headers.")
-		errResponse.StatusCode = http.StatusInternalServerError
-		errResponse.ErrorMsg = "Did not receive TruFaaS headers."
-		sendErrorResponse(w, errResponse)
-		return
-	}
-
-	data = map[string]interface{}{
-		"fn_name":            fnName,
-		"result":             string(body),
-		"mac_verification":   verifyMacTag(serverPublicKeyHex, clientPrivKeyHex, trustVerificationTag, macTag),
-		"trust_verification": trustVerificationTag,
-		"mac_tag":            macTag,
-		"ex_comp_public_key": serverPublicKeyHex,
-	}
-
-	fmt.Println("MAC tag verification succeeded")
-	fmt.Println("[TruFaaS] Trust verification value received: ", trustVerificationTag)
-	fmt.Println("Function invocation result: ", string(body))
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
