@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 type functionInvocationResults struct {
@@ -36,7 +37,7 @@ func main() {
 		Handler: corsHandler.Handler(http.DefaultServeMux),
 	}
 	http.HandleFunc("/create", clientDeployFunction)
-	http.HandleFunc("/invoke/{fnName}", clientVerifyFunction)
+	http.HandleFunc("/invoke/", clientVerifyFunction)
 	http.HandleFunc("/generate", clientGenerateKeys)
 	fmt.Println("Server listening on port 8000...")
 	log.Fatal(server.ListenAndServe())
@@ -98,7 +99,8 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fnName := r.URL.Path[len("/invoke/"):]
+	//fnName := r.URL.Path[len("/invoke/"):]
+	fnName := strings.TrimPrefix(r.URL.Path, "/invoke/")
 
 	url := "http://localhost:31314/" + fnName
 
@@ -147,6 +149,8 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 		sendErrorResponse(w, errResponse)
 		return
 	}
+
+	fmt.Println(resp.Header)
 
 	// if trust headers are sent
 	if clientPrivKeyHex != "" && clientPubKeyHex != "" {
