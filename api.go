@@ -152,6 +152,14 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println(resp.Header)
 
+	if resp.StatusCode == http.StatusNotFound {
+		fmt.Println("The function you are trying to invoke does not exist.")
+		errResponse.StatusCode = http.StatusNotFound
+		errResponse.ErrorMsg = "The function you are trying to invoke does not exist."
+		sendErrorResponse(w, errResponse)
+		return
+	}
+
 	// if trust headers are sent
 	if clientPrivKeyHex != "" && clientPubKeyHex != "" {
 		// Accessing the headers
@@ -161,14 +169,6 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 		macTag := resp.Header.Get(constants.MacHeader)
 		// Get the trust verification result
 		trustVerificationTag := resp.Header.Get(constants.TrustVerificationHeader)
-
-		if resp.StatusCode == http.StatusNotFound {
-			fmt.Println("The function you are trying to invoke does not exist.")
-			errResponse.StatusCode = http.StatusNotFound
-			errResponse.ErrorMsg = "The function you are trying to invoke does not exist."
-			sendErrorResponse(w, errResponse)
-			return
-		}
 
 		if serverPublicKeyHex == "" {
 			fmt.Println("Did not receive TruFaaS headers.")
@@ -255,8 +255,7 @@ func fnCreate(fnName string, fileName string, env string) error {
 	err1 := cmd1.Run()
 
 	if err1 != nil {
-		return errors.New("Failed to create function. " + err1.Error())
-		//return errors.New(err1.Error())
+		return errors.New("failed to create function. The function name may already exist")
 	}
 
 	//Command 2: fission route create --name test --function test --url test
@@ -266,7 +265,7 @@ func fnCreate(fnName string, fileName string, env string) error {
 	cmd2.Stderr = os.Stderr
 	err2 := cmd2.Run()
 	if err2 != nil {
-		return errors.New("Failed to create route.\n " + err2.Error())
+		return errors.New("failed to create route. The route name may already exist")
 	}
 	return nil
 }
