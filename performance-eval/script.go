@@ -29,31 +29,39 @@ func main() {
 
 	// Access the variables from the .env file
 	noOfRuns := os.Getenv("NO_OF_RUNS")
-	noOfFunctions := os.Getenv("NO_OF_FUNCTIONS")
+	noOfFunctions := []int{10, 25, 50, 100, 250, 500, 750, 1000, 1500}
 	treeResetURL := os.Getenv("TREE_RESET_URL")
 	testedFnName := os.Getenv("FN_NAME")
 
+	var createdFnNames []string
 	n, _ := strconv.Atoi(noOfRuns)
-	f, _ := strconv.Atoi(noOfFunctions)
-
-	for i := 0; i < n; i++ {
-
-		fmt.Println("<<<<<<<<<<<<<<<< Run ", i+1, " >>>>>>>>>>>>>>>>>>>")
+	for j := 0; j < len(noOfFunctions); j++ {
 		//create 'f-1' number of functions first
-		createdFnNames := deployInitFunctions(f)
 
-		//deploy 'f'th function
-		deploymentTime := deployFunction(testedFnName)
+		if j > 0 {
+			createdFnNames = append(createdFnNames, deployInitFunctions(noOfFunctions[j]-noOfFunctions[j-1])...)
+		} else {
+			createdFnNames = append(createdFnNames, deployInitFunctions(noOfFunctions[j])...)
+		}
+		for i := 0; i < n; i++ {
 
-		//deploy 'f'th function
-		invocationTime := invokeFunction(testedFnName)
+			fmt.Println("<<<<<<<<<<<<<<<< Run ", i+1, " >>>>>>>>>>>>>>>>>>>")
 
-		writeToCSV(f, i+1, deploymentTime, invocationTime)
-		cleanUp(testedFnName, createdFnNames, treeResetURL)
+			//deploy 'f'th function
+			deploymentTime := deployFunction(testedFnName)
 
+			//deploy 'f'th function
+			invocationTime := invokeFunction(testedFnName)
+			deleteFunction(testedFnName)
+
+			writeToCSV(noOfFunctions[j], i+1, deploymentTime, invocationTime)
+		}
 	}
 
+	cleanUp(createdFnNames, treeResetURL)
+
 }
+
 func deployInitFunctions(f int) []string {
 	var fnNames []string
 
@@ -72,7 +80,7 @@ func deployInitFunctions(f int) []string {
 }
 
 func deployFunction(fnName string) int64 {
-	// Command 1: fission fn create --name test --env nodejs --code hello.js
+	// Command 1: fission fn create --name test --env nodejs --code ./functions/hello.js
 	cmd1 := exec.Command("fission", "fn", "create", "--name", fnName, "--env", "nodejs", "--code", "./functions/hello.js")
 	cmd1.Dir = "."
 	cmd1.Stdout = os.Stdout
@@ -115,25 +123,9 @@ func invokeFunction(fnName string) int64 {
 	return elapsed.Milliseconds()
 }
 
-func cleanUp(testedFnName string, createdFnNames []string, treeResetURL string) {
+func cleanUp(createdFnNames []string, treeResetURL string) {
 
 	//Delete all functions,routes and pkgs
-
-	// Command 1: fission fn delete --name test
-	cmd1 := exec.Command("fission", "fn", "delete", "--name", testedFnName)
-	cmd1.Dir = "."
-	err1 := cmd1.Run()
-	if err1 != nil {
-		panic(err1)
-	}
-
-	//Command 2: fission route delete --name test
-	cmd2 := exec.Command("fission", "route", "delete", "--name", testedFnName)
-	cmd2.Dir = "."
-	err2 := cmd2.Run()
-	if err2 != nil {
-		panic(err2)
-	}
 
 	for _, value := range createdFnNames {
 		// Command: fission fn delete --name value
@@ -166,7 +158,25 @@ func cleanUp(testedFnName string, createdFnNames []string, treeResetURL string) 
 	}
 
 	fmt.Println("API cleaned")
+}
 
+func deleteFunction(testedFnName string) {
+
+	// Command 1: fission fn delete --name test
+	cmd1 := exec.Command("fission", "fn", "delete", "--name", testedFnName)
+	cmd1.Dir = "."
+	err1 := cmd1.Run()
+	if err1 != nil {
+		panic(err1)
+	}
+
+	//Command 2: fission route delete --name test
+	cmd2 := exec.Command("fission", "route", "delete", "--name", testedFnName)
+	cmd2.Dir = "."
+	err2 := cmd2.Run()
+	if err2 != nil {
+		panic(err2)
+	}
 }
 
 func generateRandomString(length int) string {
