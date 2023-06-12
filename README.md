@@ -42,3 +42,7 @@ and the TruFaaS external component.
       Trust verification value received from TruFaaS:  false
       Function invocation result:  [TruFaaS] Function Invocation Stopped as Function Trust Verification Failed.
     ```
+
+
+### Attack Simulation
+1.Run the command ```go run attack.go {fn_name}```.
