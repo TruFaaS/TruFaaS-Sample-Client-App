@@ -74,7 +74,7 @@ func main() {
 		return
 	}
 
-	if !verifyMacTag(serverPublicKeyHex, clientPrivKey, trustVerificationTag, macTag) {
+	if !verifyMacTag1(serverPublicKeyHex, clientPrivKey, trustVerificationTag, macTag) {
 		fmt.Println("MAC tag verification failed")
 		return
 	}

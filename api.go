@@ -16,9 +16,11 @@ import (
 	"io"
 	"log"
 	"math/big"
+	mathrand "math/rand"
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -39,6 +41,7 @@ func main() {
 	http.HandleFunc("/create", clientDeployFunction)
 	http.HandleFunc("/invoke/", clientVerifyFunction)
 	http.HandleFunc("/generate", clientGenerateKeys)
+	http.HandleFunc("/attack/", AttackFunction)
 	fmt.Println("Server listening on port 8000...")
 	log.Fatal(server.ListenAndServe())
 }
@@ -242,6 +245,45 @@ func clientGenerateKeys(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	// Write the JSON response
+	w.Write(jsonData)
+}
+
+func AttackFunction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	fnName := strings.TrimPrefix(r.URL.Path, "/attack/")
+
+	if fnName == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		data := map[string]interface{}{
+			"error": "No function name provided",
+		}
+		jsonData, _ := json.Marshal(data)
+		w.Write(jsonData)
+	}
+	// Generate a random integer between 1 and 100
+	functionTimeout := mathrand.Intn(500) + 1
+
+	// Convert the random integer to a string
+	spec := `{"spec": {"functionTimeout": ` + strconv.Itoa(functionTimeout) + `}}`
+
+	cmd := exec.Command("kubectl", "patch", "function", fnName, "-p", spec, "--type=merge")
+	cmd.Dir = "."
+	err := cmd.Run()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Simulated Attack Scenario")
+	// Set the appropriate headers
+	w.Header().Set("Content-Type", "application/json")
+	data := map[string]interface{}{
+		"result": "Attack simulated successfully",
+	}
+	jsonData, _ := json.Marshal(data)
+	w.WriteHeader(http.StatusOK)
 	w.Write(jsonData)
 }
 
