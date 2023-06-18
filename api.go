@@ -119,7 +119,7 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if clientPrivKeyHex != "" && clientPubKeyHex != "" {
-		req.Header.Set(constants.ClientPublicKeyHeader, clientPubKeyHex)
+		req.Header.Set(constants.InvokerPublicKeyHeader, clientPubKeyHex)
 	}
 
 	// Sending the request to Fission
@@ -167,7 +167,7 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 	if clientPrivKeyHex != "" && clientPubKeyHex != "" {
 		// Accessing the headers
 		// Get the server's public key
-		serverPublicKeyHex := resp.Header.Get(constants.ServerPublicKeyHeader)
+		serverPublicKeyHex := resp.Header.Get(constants.ExCompPublicKeyHeader)
 		// Get the MAC tag
 		macTag := resp.Header.Get(constants.MacHeader)
 		// Get the trust verification result
@@ -184,7 +184,7 @@ func clientVerifyFunction(w http.ResponseWriter, r *http.Request) {
 		data = map[string]interface{}{
 			"fn_name":            fnName,
 			"result":             string(body),
-			"mac_verification":   verifyMacTag(serverPublicKeyHex, clientPrivKeyHex, trustVerificationTag, macTag),
+			"mac_verification":   verifyMacTag2(serverPublicKeyHex, clientPrivKeyHex, trustVerificationTag, macTag),
 			"trust_verification": trustVerificationTag,
 			"mac_tag":            macTag,
 			"ex_comp_public_key": serverPublicKeyHex,
@@ -312,7 +312,7 @@ func fnCreate(fnName string, fileName string, env string) error {
 	return nil
 }
 
-func verifyMacTag(serverPubKeyHex string, clientPrivateKeyHex string, trustVerificationHeader string, macTag string) bool {
+func verifyMacTag2(serverPubKeyHex string, clientPrivateKeyHex string, trustVerificationHeader string, macTag string) bool {
 	// Compute the shared secret using the client's private key and the server's public key
 
 	// TODO: need to check

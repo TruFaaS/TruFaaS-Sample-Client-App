@@ -12,30 +12,28 @@ import (
 	"io"
 	"math/big"
 	"net/http"
-	"os"
 )
 
 func main() {
-	url := os.Args[1]
-	fmt.Println("Invoking function at URL ", url)
+	functionUrl := "http://localhost:31314/fnName"
 
 	// Generate ECDSA private key
-	clientPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	invokerPrivKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	// Get the public key from the private key
-	clientPubKey := clientPrivKey.PublicKey
+	invokerPubKey := invokerPrivKey.PublicKey
 
 	// Convert the client public key to hex
-	clientPubKeyBytes := append(clientPubKey.X.Bytes(), clientPubKey.Y.Bytes()...)
-	clientPubKeyHex := hex.EncodeToString(clientPubKeyBytes)
+	invokerPubKeyBytes := append(invokerPubKey.X.Bytes(), invokerPubKey.Y.Bytes()...)
+	invokerPubKeyHex := hex.EncodeToString(invokerPubKeyBytes)
 
 	// Invoking the function at given URL
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, functionUrl, nil)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	req.Header.Set(constants.ClientPublicKeyHeader, clientPubKeyHex)
+	req.Header.Set(constants.InvokerPublicKeyHeader, invokerPubKeyHex)
 
 	// Sending the request to Fission
 	client := &http.Client{}
@@ -55,45 +53,32 @@ func main() {
 		return
 	}
 
-	// Accessing the headers
-	// Get the server's public key
-	serverPublicKeyHex := resp.Header.Get(constants.ServerPublicKeyHeader)
-	// Get the MAC tag
+	// Accessing the response headers
+	exCompPublicKeyHex := resp.Header.Get(constants.ExCompPublicKeyHeader)
 	macTag := resp.Header.Get(constants.MacHeader)
-	// Get the trust verification result
 	trustVerificationTag := resp.Header.Get(constants.TrustVerificationHeader)
 
-	if resp.StatusCode == http.StatusNotFound {
-		fmt.Println("The function you are trying to invoke does not exist.")
-		return
-	}
+	// Performing MAC tag verification
+	macTagVerification := verifyMacTag(exCompPublicKeyHex, invokerPrivKey, trustVerificationTag, macTag)
 
-	if serverPublicKeyHex == "" {
-		fmt.Println(resp.Status)
-		fmt.Println("Did not receive TruFaaS headers.")
-		return
-	}
-
-	if !verifyMacTag1(serverPublicKeyHex, clientPrivKey, trustVerificationTag, macTag) {
+	if !macTagVerification {
 		fmt.Println("MAC tag verification failed")
 		return
 	}
 
 	fmt.Println("MAC tag verification succeeded")
-	fmt.Println("[TruFaaS] Trust verification value received: ", trustVerificationTag)
 	fmt.Println("Function invocation result: ", string(body))
 }
 
-func verifyMacTag1(serverPubKeyHex string, clientPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, macTag string) bool {
+func verifyMacTag(exCompPubKeyHex string, invokerPrivateKey *ecdsa.PrivateKey, trustVerificationHeader string, macTag string) bool {
 	// Compute the shared secret using the client's private key and the server's public key
-
-	serverPubKeyBytes, _ := hex.DecodeString(serverPubKeyHex)
+	serverPubKeyBytes, _ := hex.DecodeString(exCompPubKeyHex)
 	serverPubKey := &ecdsa.PublicKey{
 		Curve: elliptic.P256(),
 		X:     new(big.Int).SetBytes(serverPubKeyBytes[:32]),
 		Y:     new(big.Int).SetBytes(serverPubKeyBytes[32:]),
 	}
-	sharedSecret, _ := serverPubKey.Curve.ScalarMult(serverPubKey.X, serverPubKey.Y, clientPrivateKey.D.Bytes())
+	sharedSecret, _ := serverPubKey.Curve.ScalarMult(serverPubKey.X, serverPubKey.Y, invokerPrivateKey.D.Bytes())
 
 	// Compute the MAC tag using the secret key and the header
 	hMac := hmac.New(sha256.New, sharedSecret.Bytes())
